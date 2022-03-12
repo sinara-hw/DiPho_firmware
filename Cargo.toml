@@ -6,17 +6,22 @@ name = "DiPho_firmware"
 version = "0.1.0"
 
 [dependencies]
-embedded-hal = "*"
-nb = "*"
 cortex-m = "*"
 cortex-m-rt = "*"
-cortex-m-semihosting = "*"
+cortex-m-rtic = "0.5.0"
+panic-semihosting = "*"
+#cortex-m-semihosting = "*"
+usb-device = "*"
+usbd-serial = "*"
 # Panic behaviour, see https://crates.io/keywords/panic-impl for alternatives
-panic-halt = "*"
+embedded-hal = "*"
 
 [dependencies.stm32f1xx-hal]
 version = "*"
-features = ["rt", "stm32f103", "medium"]
+features = ["rt", "stm32f103", "stm32-usbd"]
+
+[dev-dependencies]
+
 # Uncomment for the panic example.
 # panic-itm = "0.4.1"
 

@@ -1,49 +1,102 @@
-#![no_std]
 #![no_main]
+#![no_std]
 
-// pick a panicking behavior
-use panic_halt as _;
+extern crate panic_semihosting;
 
-use nb::block;
+use cortex_m::asm::delay;
+use embedded_hal::digital::v2::OutputPin;
+use rtic::app;
+use stm32f1xx_hal::prelude::*;
+use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
+use usb_device::bus;
+use usb_device::prelude::*;
+use usbd_serial::{SerialPort, USB_CLASS_CDC};
 
-use stm32f1xx_hal::{
-    prelude::*,
-    pac,
-    timer::Timer,
+#[app(device = stm32f1xx_hal::stm32, peripherals = true)]
+const APP: () = {
+    struct Resources {
+        usb_dev: UsbDevice<'static, UsbBusType>,
+        serial: SerialPort<'static, UsbBusType>,
+    }
+
+    #[init]
+    fn init(cx: init::Context) -> init::LateResources {
+        static mut USB_BUS: Option<bus::UsbBusAllocator<UsbBusType>> = None;
+
+        let mut flash = cx.device.FLASH.constrain();
+        let mut rcc = cx.device.RCC.constrain();
+
+        let clocks = rcc
+            .cfgr
+            .use_hse(8.mhz())
+            .sysclk(48.mhz())
+            .pclk1(24.mhz())
+            .freeze(&mut flash.acr);
+
+        assert!(clocks.usbclk_valid());
+
+        let mut gpioa = cx.device.GPIOA.split(&mut rcc.apb2);
+
+        //for development only
+        let mut usb_dp = gpioa.pa12.into_push_pull_output(&mut gpioa.crh);
+        usb_dp.set_low().unwrap();
+        delay(clocks.sysclk().0 / 100);
+
+        let usb_dm = gpioa.pa11;
+        let usb_dp = usb_dp.into_floating_input(&mut gpioa.crh);
+
+        let usb = Peripheral {
+            usb: cx.device.USB,
+            pin_dm: usb_dm,
+            pin_dp: usb_dp,
+        };
+
+        *USB_BUS = Some(UsbBus::new(usb));
+
+        let serial = SerialPort::new(USB_BUS.as_ref().unwrap());
+
+        let usb_dev = UsbDeviceBuilder::new(USB_BUS.as_ref().unwrap(), UsbVidPid(0x1600, 0x2137))
+            .manufacturer("Sinara")
+            .product("DiPho")
+            .serial_number("DiPho")
+            .device_class(USB_CLASS_CDC)
+            .build();
+
+        init::LateResources { usb_dev, serial }
+    }
+
+    #[task(binds = USB_HP_CAN_TX, resources = [usb_dev, serial])]
+    fn usb_tx(mut cx: usb_tx::Context) {
+        usb_poll(&mut cx.resources.usb_dev, &mut cx.resources.serial);
+    }
+
+    #[task(binds = USB_LP_CAN_RX0, resources = [usb_dev, serial])]
+    fn usb_rx0(mut cx: usb_rx0::Context) {
+        usb_poll(&mut cx.resources.usb_dev, &mut cx.resources.serial);
+    }
 };
-//use cortex_m_semihosting::hprintln;
-use cortex_m_rt::entry;
-//use embedded_hal::digital::v2::OutputPin;
 
+fn usb_poll<B: bus::UsbBus>(
+    usb_dev: &mut UsbDevice<'static, B>,
+    serial: &mut SerialPort<'static, B>,
+) {
+    if !usb_dev.poll(&mut [serial]) {
+        return;
+    }
 
-#[entry]
-fn main() -> ! {
-    // Get access to the core peripherals from the cortex-m crate
-    let cp = cortex_m::Peripherals::take().unwrap();
-    // Get access to the device specific peripherals from the peripheral access crate
-    let dp = pac::Peripherals::take().unwrap();
+    let mut buf = [0u8; 8];
 
-    // Take ownership over the raw flash and rcc devices and convert them into the corresponding
-    // HAL structs
-    let mut flash = dp.FLASH.constrain();
-    let mut rcc = dp.RCC.constrain();
+    match serial.read(&mut buf) {
+        Ok(count) if count > 0 => {
+            // Echo back in upper case
+            for c in buf[0..count].iter_mut() {
+                if 0x61 <= *c && *c <= 0x7a {
+                    *c &= !0x20;
+                }
+            }
 
-    // Freeze the configuration of all the clocks in the system and store the frozen frequencies in
-    // `clocks`
-    let clocks = rcc.cfgr.freeze(&mut flash.acr);
-
-    // Acquire the GPIOC peripheral
-    let mut gpioa = dp.GPIOA.split();
-
-    // Configure gpio C pin 13 as a push-pull output. The `crh` register is passed to the function
-    // in order to configure the port. For pins 0-7, crl should be passed instead.
-    let mut led = gpioa.pa8.into_push_pull_output(&mut gpioa.crh);
-    // Configure the syst timer to trigger an update every second
-    let mut timer = Timer::syst(cp.SYST, &clocks).start_count_down(1.hz());
-    loop {
-        block!(timer.wait()).unwrap();
-        led.set_high();
-        block!(timer.wait()).unwrap();
-        led.set_low();
+            serial.write(&buf[0..count]).ok();
+        }
+        _ => {}
     }
 }
