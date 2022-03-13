@@ -8,7 +8,8 @@ version = "0.1.0"
 [dependencies]
 cortex-m = "*"
 cortex-m-rt = "*"
-cortex-m-rtic = "0.5.0"
+systick-monotonic = { git = "https://github.com/rtic-rs/systick-monotonic.git" }
+cortex-m-rtic = "1.0.0"
 panic-semihosting = "*"
 #cortex-m-semihosting = "*"
 usb-device = "*"
