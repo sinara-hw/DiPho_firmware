@@ -1,58 +1,52 @@
 #![no_main]
 #![no_std]
 
-extern crate panic_semihosting;
+use panic_semihosting as _;
 
-use cortex_m::asm::delay;
-use embedded_hal::digital::v2::OutputPin;
-use stm32f1xx_hal::prelude::*;
-use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
-use systick_monotonic::*;
-use usb_device::bus;
-use usb_device::prelude::*;
-use usbd_serial::{SerialPort, USB_CLASS_CDC};
-
-use rtic::app;
-
-#[app(device = stm32f1xx_hal::stm32, peripherals = true)]
+#[rtic::app(device = stm32f1xx_hal::pac)]
 mod app {
-    use super::*;
+    use cortex_m::asm::delay;
+    use stm32f1xx_hal::prelude::*;
+    use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
+    use systick_monotonic::*;
+    use usb_device::prelude::*;
 
     #[monotonic(binds=SysTick, default=true)]
     type SysMono = Systick<1_000>; // 1 kHz / 1ms granularity
 
     #[shared]
-    struct SharedResources {}
-
-    #[local]
-    struct LocalResources {
+    struct SharedResources {
         usb_dev: UsbDevice<'static, UsbBusType>,
-        serial: SerialPort<'static, UsbBusType>,
+        serial: usbd_serial::SerialPort<'static, UsbBusType>,
     }
 
-    #[init(local = [USB_BUS: Option<bus::UsbBusAllocator<UsbBusType>> = None])]
+    #[local]
+    struct LocalResources {}
+
+    #[init]
     fn init(cx: init::Context) -> (SharedResources, LocalResources, init::Monotonics) {
+        static mut USB_BUS: Option<usb_device::bus::UsbBusAllocator<UsbBusType>> = None;
+
         let mut flash = cx.device.FLASH.constrain();
         let mut rcc = cx.device.RCC.constrain();
-
         let clocks = rcc
             .cfgr
-            .use_hse(8.mhz())
-            .sysclk(48.mhz())
-            .pclk1(24.mhz())
+            .use_hse(8.MHz())
+            .sysclk(48.MHz())
+            .pclk1(24.MHz())
             .freeze(&mut flash.acr);
 
         assert!(clocks.usbclk_valid());
 
         // Initialize the monotonic
-        let mono = Systick::new(cx.core.SYST, clocks.sysclk().0);
+        let mono = Systick::new(cx.core.SYST, clocks.sysclk().raw());
 
-        let mut gpioa = cx.device.GPIOA.split(&mut rcc.apb2);
+        let mut gpioa = cx.device.GPIOA.split();
 
         //for development only
         let mut usb_dp = gpioa.pa12.into_push_pull_output(&mut gpioa.crh);
-        usb_dp.set_low().unwrap();
-        delay(clocks.sysclk().0 / 100);
+        usb_dp.set_low();
+        delay(clocks.sysclk().raw() / 100);
 
         let usb_dm = gpioa.pa11;
         let usb_dp = usb_dp.into_floating_input(&mut gpioa.crh);
@@ -63,54 +57,71 @@ mod app {
             pin_dp: usb_dp,
         };
 
-        *cx.local.USB_BUS = Some(UsbBus::new(usb));
+        unsafe {
+            USB_BUS.replace(UsbBus::new(usb));
+        }
 
-        let serial = SerialPort::new(cx.local.USB_BUS.as_ref().unwrap());
+        let serial = usbd_serial::SerialPort::new(unsafe { USB_BUS.as_ref().unwrap() });
 
         let usb_dev = UsbDeviceBuilder::new(
-            cx.local.USB_BUS.as_ref().unwrap(),
-            UsbVidPid(0x1600, 0x2137),
+            unsafe { USB_BUS.as_ref().unwrap() },
+            UsbVidPid(0x16c0, 0x27dd),
         )
         .manufacturer("Sinara")
         .product("DiPho")
         .serial_number("DiPho")
-        .device_class(USB_CLASS_CDC)
+        .device_class(usbd_serial::USB_CLASS_CDC)
         .build();
 
         (
-            SharedResources {},
-            LocalResources { usb_dev, serial },
+            SharedResources { usb_dev, serial },
+            LocalResources {},
             init::Monotonics(mono),
         )
     }
 
-    #[task(binds = USB_LP_CAN_RX0, local = [usb_dev, serial])]
-    fn usb_rx0(mut cx: usb_rx0::Context) {
-        usb_poll(&mut cx.local.usb_dev, &mut cx.local.serial);
+    #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial])]
+    fn usb_tx(cx: usb_tx::Context) {
+        let mut usb_dev = cx.shared.usb_dev;
+        let mut serial = cx.shared.serial;
+
+        (&mut usb_dev, &mut serial).lock(|usb_dev, serial| {
+            super::usb_poll(usb_dev, serial);
+        });
     }
 
-    fn usb_poll<B: bus::UsbBus>(
-        usb_dev: &mut UsbDevice<'static, B>,
-        serial: &mut SerialPort<'static, B>,
-    ) {
-        if !usb_dev.poll(&mut [serial]) {
-            return;
-        }
+    #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial])]
+    fn usb_rx0(cx: usb_rx0::Context) {
+        let mut usb_dev = cx.shared.usb_dev;
+        let mut serial = cx.shared.serial;
 
-        let mut buf = [0u8; 8];
+        (&mut usb_dev, &mut serial).lock(|usb_dev, serial| {
+            super::usb_poll(usb_dev, serial);
+        });
+    }
+}
 
-        match serial.read(&mut buf) {
-            Ok(count) if count > 0 => {
-                // Echo back in upper case
-                for c in buf[0..count].iter_mut() {
-                    if 0x61 <= *c && *c <= 0x7a {
-                        *c &= !0x20;
-                    }
+fn usb_poll<B: usb_device::bus::UsbBus>(
+    usb_dev: &mut usb_device::prelude::UsbDevice<'static, B>,
+    serial: &mut usbd_serial::SerialPort<'static, B>,
+) {
+    if !usb_dev.poll(&mut [serial]) {
+        return;
+    }
+
+    let mut buf = [0u8; 8];
+
+    match serial.read(&mut buf) {
+        Ok(count) if count > 0 => {
+            // Echo back in upper case
+            for c in buf[0..count].iter_mut() {
+                if 0x61 <= *c && *c <= 0x7a {
+                    *c &= !0x20;
                 }
-
-                serial.write(&buf[0..count]).ok();
             }
-            _ => {}
+
+            serial.write(&buf[0..count]).ok();
         }
+        _ => {}
     }
 }

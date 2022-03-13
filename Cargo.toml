@@ -42,7 +42,12 @@ name = "DiPho_firmware"
 test = false
 bench = false
 
+[profile.dev]
+codegen-units = 1
+opt-level = 1
+
 [profile.release]
 codegen-units = 1 # better optimizations
+opt-level = 1
 debug = true # symbols are nice and they don't increase the size on Flash
 lto = true # better optimizations
