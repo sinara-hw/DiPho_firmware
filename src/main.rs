@@ -4,10 +4,10 @@
 extern crate panic_semihosting;
 
 use cortex_m::asm::delay;
-use systick_monotonic::*;
 use embedded_hal::digital::v2::OutputPin;
 use stm32f1xx_hal::prelude::*;
 use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
+use systick_monotonic::*;
 use usb_device::bus;
 use usb_device::prelude::*;
 use usbd_serial::{SerialPort, USB_CLASS_CDC};
@@ -22,18 +22,16 @@ mod app {
     type SysMono = Systick<1_000>; // 1 kHz / 1ms granularity
 
     #[shared]
-    struct SharedResources {   
-    }
+    struct SharedResources {}
 
     #[local]
     struct LocalResources {
         usb_dev: UsbDevice<'static, UsbBusType>,
-        serial: SerialPort<'static, UsbBusType>,     
+        serial: SerialPort<'static, UsbBusType>,
     }
 
     #[init(local = [USB_BUS: Option<bus::UsbBusAllocator<UsbBusType>> = None])]
-    fn init(cx: init::Context) -> (SharedResources, LocalResources,  init::Monotonics) {
-
+    fn init(cx: init::Context) -> (SharedResources, LocalResources, init::Monotonics) {
         let mut flash = cx.device.FLASH.constrain();
         let mut rcc = cx.device.RCC.constrain();
 
@@ -69,22 +67,21 @@ mod app {
 
         let serial = SerialPort::new(cx.local.USB_BUS.as_ref().unwrap());
 
-        let usb_dev = UsbDeviceBuilder::new(cx.local.USB_BUS.as_ref().unwrap(), UsbVidPid(0x1600, 0x2137))
-            .manufacturer("Sinara")
-            .product("DiPho")
-            .serial_number("DiPho")
-            .device_class(USB_CLASS_CDC)
-            .build();
+        let usb_dev = UsbDeviceBuilder::new(
+            cx.local.USB_BUS.as_ref().unwrap(),
+            UsbVidPid(0x1600, 0x2137),
+        )
+        .manufacturer("Sinara")
+        .product("DiPho")
+        .serial_number("DiPho")
+        .device_class(USB_CLASS_CDC)
+        .build();
 
-            (
-                SharedResources {
-                },
-                LocalResources {
-                    usb_dev,
-                    serial
-                },
-                init::Monotonics(mono),
-            )
+        (
+            SharedResources {},
+            LocalResources { usb_dev, serial },
+            init::Monotonics(mono),
+        )
     }
 
     #[task(binds = USB_LP_CAN_RX0, local = [usb_dev, serial])]
@@ -99,9 +96,9 @@ mod app {
         if !usb_dev.poll(&mut [serial]) {
             return;
         }
-    
+
         let mut buf = [0u8; 8];
-    
+
         match serial.read(&mut buf) {
             Ok(count) if count > 0 => {
                 // Echo back in upper case
@@ -110,11 +107,10 @@ mod app {
                         *c &= !0x20;
                     }
                 }
-    
+
                 serial.write(&buf[0..count]).ok();
             }
             _ => {}
         }
     }
 }
-
