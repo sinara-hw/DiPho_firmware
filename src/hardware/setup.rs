@@ -1,20 +1,16 @@
-
 //use stm32f1xx_hal::hal::digital::v2::OutputPin;
 //use stm32f1xx_hal::
-
 
 use super::hal::{
     self as hal,
     gpio::GpioExt,
     prelude::*,
     usb::{Peripheral, UsbBus, UsbBusType},
-    
 };
 
 use super::{
     adc_internal::{AdcInternal, AdcInternalPins},
     gpio::{Gpio, GpioPins},
-    
 };
 
 //use stm32f1xx_hal::afio::MAPR as afio;
@@ -31,10 +27,7 @@ pub struct DiPhoDevices {
     pub serial_data: usbd_serial::SerialPort<'static, UsbBusType>,
 }
 
-pub fn setup(
-    device: stm32f1xx_hal::stm32::Peripherals,
-) -> DiPhoDevices {
-
+pub fn setup(device: stm32f1xx_hal::stm32::Peripherals) -> DiPhoDevices {
     let mut flash = device.FLASH.constrain();
     let mut rcc = device.RCC.constrain();
     let ccdr = rcc
@@ -46,13 +39,7 @@ pub fn setup(
 
     assert!(ccdr.usbclk_valid());
 
-    
-
-
-
     info!("--- Starting hardware setup ---");
-    
-
 
     //let mut delay = delay::AsmDelay::new(ccdr.clocks.c_ck().0);
 
@@ -63,9 +50,6 @@ pub fn setup(
     let mut afio = device.AFIO.constrain();
     let (pa15, pb3, pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
 
-    
-
-
     info!("Setup GPIO");
 
     let pa15 = pa15.into_push_pull_output(&mut gpioa.crh);
@@ -73,15 +57,9 @@ pub fn setup(
     //let pb4 = pb4.into_push_pull_output(&mut gpiob.crl);
 
     let gpio_pins = GpioPins {
-        led: 
-            gpioa.pa8.into_push_pull_output(&mut gpioa.crh),
-        gain_sel: (
-            pb3,
-            pa15,
-        ),
-        afe_type_ind:
-            gpiob.pb2.into_floating_input(&mut gpiob.crl),
-
+        led: gpioa.pa8.into_push_pull_output(&mut gpioa.crh),
+        gain_sel: (pb3, pa15),
+        afe_type_ind: gpiob.pb2.into_floating_input(&mut gpiob.crl),
     };
 
     let mut gpio = Gpio::new(gpio_pins);
@@ -126,24 +104,17 @@ pub fn setup(
 
     info!("Setup CPU ADCs");
     let adc_internal_pins = AdcInternalPins {
-        afe_output: 
-            gpioa.pa0.into_analog(&mut gpioa.crl),
-        cal_output: 
-            gpioa.pa1.into_analog(&mut gpioa.crl),
-        bias_output:
-            gpioa.pa2.into_analog(&mut gpioa.crl),
+        afe_output: gpioa.pa0.into_analog(&mut gpioa.crl),
+        cal_output: gpioa.pa1.into_analog(&mut gpioa.crl),
+        bias_output: gpioa.pa2.into_analog(&mut gpioa.crl),
     };
 
-    let mut adc_internal = AdcInternal::new(
-        &ccdr,
-        device.ADC1,
-        adc_internal_pins,
-    );
+    let mut adc_internal = AdcInternal::new(&ccdr, device.ADC1, adc_internal_pins);
 
     info!("AFE: {} V", adc_internal.read_afe_raw());
     info!("CAL: {} V", adc_internal.read_cal_raw());
     info!("BIAS: {} V", adc_internal.read_bias_raw());
-    
+
     info!("--- Hardware setup done! ---");
 
     DiPhoDevices {
@@ -152,8 +123,5 @@ pub fn setup(
         usb_dev,
         serial_config,
         serial_data,
-
     }
-
-
 }

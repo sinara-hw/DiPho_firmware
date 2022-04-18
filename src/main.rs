@@ -12,18 +12,17 @@ use defmt::{info, Format};
 
 use hardware::{
     adc_internal::AdcInternal,
-    gpio::{Gpio, AfeType, GainSetting},
+    gpio::{AfeType, GainSetting, Gpio},
     hal,
 };
 
-use stm32f1xx_hal::prelude::*;
-use stm32f1xx_hal::adc::SampleTime;
-use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
-use rtic;
-use systick_monotonic::*;
 use cortex_m::asm::delay;
+use rtic;
+use stm32f1xx_hal::adc::SampleTime;
+use stm32f1xx_hal::prelude::*;
+use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
+use systick_monotonic::*;
 use usb_device::prelude::*;
-
 
 #[derive(Clone, Copy, Debug)]
 pub struct DeviceSettings {
@@ -37,7 +36,7 @@ impl Default for DeviceSettings {
     fn default() -> Self {
         Self {
             sampling_time: SampleTime::T_239,
-            data_interval: 100,  //miliseconds
+            data_interval: 100, //miliseconds
             gain: GainSetting::Low,
             led_off: true,
         }
@@ -76,11 +75,9 @@ mod app {
         let systick = cx.core.SYST;
         let mono = Systick::new(systick, 48_000_000);
         //let clock = SystemTimer::;
-        
+
         let dipho = hardware::setup::setup(cx.device);
 
-
-        
         let local = Local {
             adc_internal: dipho.adc_internal,
         };
@@ -92,7 +89,7 @@ mod app {
             serial_config: dipho.serial_config,
             serial_data: dipho.serial_data,
         };
-        
+
         (shared, local, init::Monotonics(mono))
     }
 
@@ -102,9 +99,11 @@ mod app {
         let mut serial_config = cx.shared.serial_config;
         let mut serial_data = cx.shared.serial_data;
 
-        (&mut usb_dev, &mut serial_config, &mut serial_data).lock(|usb_dev, serial_config, serial_data| {
-            super::usb_poll(usb_dev, serial_config, serial_data);
-        });
+        (&mut usb_dev, &mut serial_config, &mut serial_data).lock(
+            |usb_dev, serial_config, serial_data| {
+                super::usb_poll(usb_dev, serial_config, serial_data);
+            },
+        );
     }
 
     #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial_config, serial_data])]
@@ -113,9 +112,11 @@ mod app {
         let mut serial_config = cx.shared.serial_config;
         let mut serial_data = cx.shared.serial_data;
 
-        (&mut usb_dev, &mut serial_config, &mut serial_data).lock(|usb_dev, serial_config, serial_data| {
-            super::usb_poll(usb_dev, serial_config, serial_data);
-        });
+        (&mut usb_dev, &mut serial_config, &mut serial_data).lock(
+            |usb_dev, serial_config, serial_data| {
+                super::usb_poll(usb_dev, serial_config, serial_data);
+            },
+        );
     }
 }
 

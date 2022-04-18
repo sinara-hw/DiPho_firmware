@@ -1,23 +1,14 @@
-
 //use num_enum::TryFromPrimitive;
 
-use super::hal::{
-    gpio::{gpioa::*, gpiob::*, Floating, Input, Output, PushPull, PinState},
-    //hal::digital::v2::{InputPin, OutputPin, PinState},
-    
-};
+use super::hal::gpio::{gpioa::*, gpiob::*, Floating, Input, Output, PinState, PushPull};
 use defmt::Format;
 //use embedded_hal as hal;
 //use hal::digital::v2::{InputPin, OutputPin, PinState};
 
 #[allow(clippy::type_complexity)]
 pub struct GpioPins {
-    pub led: 
-        PA8<Output<PushPull>>,
-    pub gain_sel: (
-        PB3<Output<PushPull>>,
-        PA15<Output<PushPull>>,
-    ),
+    pub led: PA8<Output<PushPull>>,
+    pub gain_sel: (PB3<Output<PushPull>>, PA15<Output<PushPull>>),
     pub afe_type_ind: PB2<Input<Floating>>,
 }
 
@@ -83,29 +74,32 @@ impl Gpio {
         gpio
     }
 
-    pub fn set_gain(&mut self, gain: GainSetting){
+    pub fn set_gain(&mut self, gain: GainSetting) {
         match gain {
             GainSetting::Low => {
                 self.pins.gain_sel.0.set_state(PinState::High);
                 self.pins.gain_sel.1.set_state(PinState::High);
-            },
+            }
             GainSetting::Medium => {
                 self.pins.gain_sel.0.set_state(PinState::High);
                 self.pins.gain_sel.1.set_state(PinState::Low);
-            },
+            }
             GainSetting::High => {
                 self.pins.gain_sel.0.set_state(PinState::Low);
                 self.pins.gain_sel.1.set_state(PinState::High);
-            },
+            }
             GainSetting::Max => {
                 self.pins.gain_sel.0.set_state(PinState::Low);
                 self.pins.gain_sel.1.set_state(PinState::Low);
-            },
+            }
         }
     }
 
     pub fn get_gain(&mut self) -> GainSetting {
-        match (self.pins.gain_sel.0.get_state(), self.pins.gain_sel.1.get_state()) {
+        match (
+            self.pins.gain_sel.0.get_state(),
+            self.pins.gain_sel.1.get_state(),
+        ) {
             (PinState::High, PinState::High) => GainSetting::Low,
             (PinState::High, PinState::Low) => GainSetting::Medium,
             (PinState::Low, PinState::High) => GainSetting::High,
@@ -124,9 +118,4 @@ impl Gpio {
         //let s = PinState::from(state);
         self.pins.led.set_state(state);
     }
-
-
 }
-
-
-

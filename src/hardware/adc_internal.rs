@@ -1,4 +1,3 @@
-
 //use embedded_hal::adc::Channel;
 
 use super::hal::{
@@ -27,11 +26,7 @@ pub struct AdcInternal {
 }
 
 impl AdcInternal {
-    pub fn new(
-        clocks: &Clocks,
-        adc: ADC1,
-        pins: AdcInternalPins,
-    ) -> Self {
+    pub fn new(clocks: &Clocks, adc: ADC1, pins: AdcInternalPins) -> Self {
         let adc1 = adc::Adc::adc1(adc, *clocks);
 
         AdcInternal { adc1, pins }
@@ -86,8 +81,4 @@ impl AdcInternal {
         let readout: u32 = self.adc1.read(p).unwrap();
         readout
     }
-
-
-
-
 }
