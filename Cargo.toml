@@ -7,8 +7,11 @@ version = "0.1.0"
 
 [dependencies]
 cortex-m = "*"
-cortex-m-rt = "*"
+cortex-m-rt = "*" 
+num_enum = { version = "*", default-features = false }
 systick-monotonic = { git = "https://github.com/rtic-rs/systick-monotonic.git" }
+menu = { git = "https://github.com/pm-daniel/menu.git"}
+defmt = "*"
 cortex-m-rtic = "1.0.0"
 panic-semihosting = "*"
 #cortex-m-semihosting = "*"
