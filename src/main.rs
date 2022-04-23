@@ -9,8 +9,8 @@ pub mod hardware;
 use defmt::{info, Format};
 use defmt_rtt as _; // global logger
 use panic_probe as _; // gloibal panic handler
-//use defmt_semihosting as _; // global logger
-//use panic_probe as _; // gloibal panic handler
+                      //use defmt_semihosting as _; // global logger
+                      //use panic_probe as _; // gloibal panic handler
 
 use hardware::{
     adc_internal::AdcInternal,
@@ -18,6 +18,7 @@ use hardware::{
     hal,
 };
 
+use arrform::*;
 use cortex_m::asm::delay;
 use rtic;
 use stm32f1xx_hal::adc::SampleTime;
@@ -25,7 +26,6 @@ use stm32f1xx_hal::prelude::*;
 use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
 use systick_monotonic::*;
 use usb_device::prelude::*;
-use arrform::*;
 
 #[derive(Clone, Copy, Debug)]
 pub struct DeviceSettings {
@@ -132,7 +132,10 @@ mod app {
 
     #[task(priority = 1, local=[cnt: u32 = 0], shared=[device_settings, serial_data])]
     fn data_task(mut cx: data_task::Context, instant: <Mono as rtic::Monotonic>::Instant) {
-        let data_interval = cx.shared.device_settings.lock(|device_settings| device_settings.data_interval);
+        let data_interval = cx
+            .shared
+            .device_settings
+            .lock(|device_settings| device_settings.data_interval);
         let next_instant = instant + (data_interval as u64).millis();
         data_task::spawn_at(next_instant, next_instant).unwrap();
         //data_task::spawn_after((data_interval as u64).millis()).unwrap();
@@ -140,12 +143,9 @@ mod app {
         let data = arrform!(32, "timestamp: {} \r\n", instant);
         //let mut usb_dev = cx.shared.usb_dev;
         let mut serial_data = cx.shared.serial_data;
-        (&mut serial_data).lock(
-            |serial_data| {
-                serial_data.write(data.as_bytes()).ok();
-            }
-        );
-
+        (&mut serial_data).lock(|serial_data| {
+            serial_data.write(data.as_bytes()).ok();
+        });
     }
 }
 
