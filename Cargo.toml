@@ -22,7 +22,7 @@ usb-device = "*"
 usbd-serial = "*"
 # Panic behaviour, see https://crates.io/keywords/panic-impl for alternatives
 embedded-hal = "*"
-heapless = "*"
+arrform = "*"
 
 [dependencies.stm32f1xx-hal]
 version = "*"

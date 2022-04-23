@@ -25,9 +25,7 @@ use stm32f1xx_hal::prelude::*;
 use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
 use systick_monotonic::*;
 use usb_device::prelude::*;
-//use heapless::String;
-//use heapless::*;
-//use core::fmt::*;
+use arrform::*;
 
 #[derive(Clone, Copy, Debug)]
 pub struct DeviceSettings {
@@ -139,7 +137,7 @@ mod app {
         data_task::spawn_at(next_instant, next_instant).unwrap();
         //data_task::spawn_after((data_interval as u64).millis()).unwrap();
 
-        let data = "te";
+        let data = arrform!(32, "timestamp: {} \r\n", instant);
         //let mut usb_dev = cx.shared.usb_dev;
         let mut serial_data = cx.shared.serial_data;
         (&mut serial_data).lock(
