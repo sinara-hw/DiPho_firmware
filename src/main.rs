@@ -1,13 +1,15 @@
 #![no_main]
 #![no_std]
 
-use panic_semihosting as _;
+//use panic_semihosting as _;
 //use embedded_hal as hal;
 
 pub mod hardware;
 
 use defmt::{info, Format};
-//use defmt_rtt as _; // global logger
+use defmt_rtt as _; // global logger
+use panic_probe as _; // gloibal panic handler
+//use defmt_semihosting as _; // global logger
 //use panic_probe as _; // gloibal panic handler
 
 use hardware::{
@@ -23,6 +25,9 @@ use stm32f1xx_hal::prelude::*;
 use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
 use systick_monotonic::*;
 use usb_device::prelude::*;
+//use heapless::String;
+//use heapless::*;
+//use core::fmt::*;
 
 #[derive(Clone, Copy, Debug)]
 pub struct DeviceSettings {
@@ -43,7 +48,7 @@ impl Default for DeviceSettings {
     }
 }
 
-#[rtic::app(device = stm32f1xx_hal::pac)]
+#[rtic::app(device = stm32f1xx_hal::pac, dispatchers = [CAN_SCE, CAN_RX1])]
 mod app {
     use super::*;
 
@@ -73,10 +78,12 @@ mod app {
     #[init]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         let systick = cx.core.SYST;
-        let mono = Systick::new(systick, 48_000_000);
+        let mut mono = Systick::new(systick, 48_000_000);
         //let clock = SystemTimer::;
 
         let dipho = hardware::setup::setup(cx.device);
+
+        data_task::spawn(mono.now()).unwrap();
 
         let local = Local {
             adc_internal: dipho.adc_internal,
@@ -117,6 +124,30 @@ mod app {
                 super::usb_poll(usb_dev, serial_config, serial_data);
             },
         );
+    }
+
+    // #[idle()]
+    // fn idle(mut cx: idle::Context) -> ! {
+    //     loop {
+    //     }
+    // }
+
+    #[task(priority = 1, local=[cnt: u32 = 0], shared=[device_settings, serial_data])]
+    fn data_task(mut cx: data_task::Context, instant: <Mono as rtic::Monotonic>::Instant) {
+        let data_interval = cx.shared.device_settings.lock(|device_settings| device_settings.data_interval);
+        let next_instant = instant + (data_interval as u64).millis();
+        data_task::spawn_at(next_instant, next_instant).unwrap();
+        //data_task::spawn_after((data_interval as u64).millis()).unwrap();
+
+        let data = "te";
+        //let mut usb_dev = cx.shared.usb_dev;
+        let mut serial_data = cx.shared.serial_data;
+        (&mut serial_data).lock(
+            |serial_data| {
+                serial_data.write(data.as_bytes()).ok();
+            }
+        );
+
     }
 }
 

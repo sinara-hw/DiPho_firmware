@@ -12,13 +12,17 @@ num_enum = { version = "*", default-features = false }
 systick-monotonic = { git = "https://github.com/rtic-rs/systick-monotonic.git" }
 menu = { git = "https://github.com/pm-daniel/menu.git"}
 defmt = "*"
+defmt-rtt = "*"
+panic-probe = "*"
+#defmt-semihosting = "*"
 cortex-m-rtic = "1.0.0"
 panic-semihosting = "*"
-#cortex-m-semihosting = "*"
+cortex-m-semihosting = "*"
 usb-device = "*"
 usbd-serial = "*"
 # Panic behaviour, see https://crates.io/keywords/panic-impl for alternatives
 embedded-hal = "*"
+heapless = "*"
 
 [dependencies.stm32f1xx-hal]
 version = "*"
