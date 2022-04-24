@@ -24,11 +24,11 @@ use arrform::*;
 use cortex_m::asm::delay;
 use rtic;
 use stm32f1xx_hal::adc::SampleTime;
-use stm32f1xx_hal::prelude::*;
-use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
-use stm32f1xx_hal::timer::{Event, Timer, Counter, CounterUs};
 use stm32f1xx_hal::pac::TIM2;
-use systick_monotonic::{*, fugit::Hertz};
+use stm32f1xx_hal::prelude::*;
+use stm32f1xx_hal::timer::{Counter, CounterUs, Event, Timer};
+use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
+use systick_monotonic::{fugit::Hertz, *};
 use usb_device::prelude::*;
 
 #[derive(Clone, Copy, Debug)]
@@ -140,7 +140,6 @@ mod app {
             },
         );
     }
-
 
     #[task(priority = 1, local=[cnt: u32 = 0], shared=[device_settings, serial_data])]
     fn data_task(mut cx: data_task::Context, instant: <Mono as rtic::Monotonic>::Instant) {

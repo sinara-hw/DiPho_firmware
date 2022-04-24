@@ -4,10 +4,10 @@
 use super::hal::{
     self as hal,
     gpio::GpioExt,
-    prelude::*,
-    usb::{Peripheral, UsbBus, UsbBusType},
-    timer::{Event, Timer, Counter, CounterUs},
     pac::{interrupt, Interrupt, TIM2},
+    prelude::*,
+    timer::{Counter, CounterUs, Event, Timer},
+    usb::{Peripheral, UsbBus, UsbBusType},
 };
 
 use super::{
@@ -16,8 +16,8 @@ use super::{
 };
 
 //use stm32f1xx_hal::afio::MAPR as afio;
+use systick_monotonic::fugit::{Duration, Hertz, Rate};
 use usb_device::prelude::*;
-use systick_monotonic::fugit::{Rate, Hertz, Duration};
 //use systick_monotonic::*;
 use cortex_m::asm::delay;
 use cortex_m::interrupt::free;
@@ -120,14 +120,12 @@ pub fn setup(device: stm32f1xx_hal::stm32::Peripherals) -> DiPhoDevices {
     info!("CAL: {}", adc_internal.read_cal_raw());
     info!("BIAS: {}", adc_internal.read_bias_raw());
 
-
     let freq: Rate<u32, 1, 1> = 10.kHz();
 
     info!("Setup default ADC sampling frequency {}", freq);
 
     let mut adc_counter = device.TIM2.counter_us(&ccdr);
     adc_counter.start(freq.into_duration()).unwrap();
-
 
     adc_counter.listen(Event::Update);
 
@@ -136,7 +134,7 @@ pub fn setup(device: stm32f1xx_hal::stm32::Peripherals) -> DiPhoDevices {
     }
 
     info!("--- Hardware setup done! ---");
-    
+
     DiPhoDevices {
         gpio,
         adc_internal,

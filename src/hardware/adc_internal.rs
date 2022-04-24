@@ -8,7 +8,7 @@ use super::hal::{
     stm32::ADC1,
 };
 
-use systick_monotonic::{*, fugit::Hertz};
+use systick_monotonic::{fugit::Hertz, *};
 
 pub enum AdcChannel {
     AfeOutput,
