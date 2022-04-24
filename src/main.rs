@@ -54,6 +54,7 @@ impl Default for DeviceSettings {
 
 #[rtic::app(device = stm32f1xx_hal::pac, dispatchers = [CAN_SCE, CAN_RX1])]
 mod app {
+
     use super::*;
 
     // use cortex_m::asm::delay;
@@ -106,12 +107,14 @@ mod app {
         (shared, local, init::Monotonics(mono))
     }
 
-    #[task(binds = TIM2, shared=[device_settings, serial_data])]
-    fn read_adc(cx: read_adc::Context) {
-        let data = "radc";
+    #[task(binds = TIM2, local=[adc_internal], shared=[serial_data])]
+    fn transmit_adc_data(cx: transmit_adc_data::Context) {
+        let mut data = cx.local.adc_internal.read_afe_output_voltage();
         let mut serial_data = cx.shared.serial_data;
+        let dtbs = arrform!(12, "{:.4} \r\n", data);
         (&mut serial_data).lock(|serial_data| {
-            serial_data.write(data.as_bytes()).ok();
+            //serial_data.write(&data.to_le_bytes()).ok();
+            serial_data.write(dtbs.as_bytes()).ok();
         });
     }
 
@@ -141,7 +144,7 @@ mod app {
         );
     }
 
-    #[task(priority = 1, local=[cnt: u32 = 0], shared=[device_settings, serial_data])]
+    #[task(priority = 1, shared=[device_settings, serial_data])]
     fn data_task(mut cx: data_task::Context, instant: <Mono as rtic::Monotonic>::Instant) {
         let data_interval = cx
             .shared
@@ -149,14 +152,6 @@ mod app {
             .lock(|device_settings| device_settings.data_interval);
         let next_instant = instant + data_interval;
         data_task::spawn_at(next_instant, next_instant).unwrap();
-        //data_task::spawn_after((data_interval as u64).millis()).unwrap();
-
-        let data = arrform!(32, "timestamp: {} \r\n", instant);
-        //let mut usb_dev = cx.shared.usb_dev;
-        let mut serial_data = cx.shared.serial_data;
-        (&mut serial_data).lock(|serial_data| {
-            serial_data.write(data.as_bytes()).ok();
-        });
     }
 }
 
