@@ -6,6 +6,8 @@ use super::hal::{
     gpio::GpioExt,
     prelude::*,
     usb::{Peripheral, UsbBus, UsbBusType},
+    timer::{Event, Timer, Counter, CounterUs},
+    pac::{interrupt, Interrupt, TIM2},
 };
 
 use super::{
@@ -15,13 +17,16 @@ use super::{
 
 //use stm32f1xx_hal::afio::MAPR as afio;
 use usb_device::prelude::*;
+use systick_monotonic::fugit::{Rate, Hertz, Duration};
 //use systick_monotonic::*;
 use cortex_m::asm::delay;
+use cortex_m::interrupt::free;
 use defmt::info;
 
 pub struct DiPhoDevices {
     pub gpio: Gpio,
     pub adc_internal: AdcInternal,
+    pub adc_counter: CounterUs<TIM2>,
     pub usb_dev: UsbDevice<'static, UsbBusType>,
     pub serial_config: usbd_serial::SerialPort<'static, UsbBusType>,
     pub serial_data: usbd_serial::SerialPort<'static, UsbBusType>,
@@ -111,15 +116,31 @@ pub fn setup(device: stm32f1xx_hal::stm32::Peripherals) -> DiPhoDevices {
 
     let mut adc_internal = AdcInternal::new(&ccdr, device.ADC1, adc_internal_pins);
 
-    info!("AFE: {} V", adc_internal.read_afe_raw());
-    info!("CAL: {} V", adc_internal.read_cal_raw());
-    info!("BIAS: {} V", adc_internal.read_bias_raw());
+    info!("AFE: {}", adc_internal.read_afe_raw());
+    info!("CAL: {}", adc_internal.read_cal_raw());
+    info!("BIAS: {}", adc_internal.read_bias_raw());
+
+
+    let freq: Rate<u32, 1, 1> = 10.kHz();
+
+    info!("Setup default ADC sampling frequency {}", freq);
+
+    let mut adc_counter = device.TIM2.counter_us(&ccdr);
+    adc_counter.start(freq.into_duration()).unwrap();
+
+
+    adc_counter.listen(Event::Update);
+
+    unsafe {
+        cortex_m::peripheral::NVIC::unmask(Interrupt::TIM2);
+    }
 
     info!("--- Hardware setup done! ---");
-
+    
     DiPhoDevices {
         gpio,
         adc_internal,
+        adc_counter,
         usb_dev,
         serial_config,
         serial_data,

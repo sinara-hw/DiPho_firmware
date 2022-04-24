@@ -6,6 +6,8 @@
 
 pub mod hardware;
 
+//use core::time::Duration;
+
 use defmt::{info, Format};
 use defmt_rtt as _; // global logger
 use panic_probe as _; // gloibal panic handler
@@ -24,13 +26,16 @@ use rtic;
 use stm32f1xx_hal::adc::SampleTime;
 use stm32f1xx_hal::prelude::*;
 use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
-use systick_monotonic::*;
+use stm32f1xx_hal::timer::{Event, Timer, Counter, CounterUs};
+use stm32f1xx_hal::pac::TIM2;
+use systick_monotonic::{*, fugit::Hertz};
 use usb_device::prelude::*;
 
 #[derive(Clone, Copy, Debug)]
 pub struct DeviceSettings {
     pub sampling_time: SampleTime,
-    pub data_interval: u32,
+    pub sampling_freq: Hertz<u32>,
+    pub data_interval: systick_monotonic::fugit::Duration<u64, 1, 1000>,
     pub gain: GainSetting,
     pub led_off: bool,
 }
@@ -39,7 +44,8 @@ impl Default for DeviceSettings {
     fn default() -> Self {
         Self {
             sampling_time: SampleTime::T_239,
-            data_interval: 100, //miliseconds
+            sampling_freq: 10.kHz(),
+            data_interval: (1000 as u64).millis(),
             gain: GainSetting::Low,
             led_off: true,
         }
@@ -71,6 +77,7 @@ mod app {
     #[local]
     struct Local {
         adc_internal: AdcInternal,
+        adc_counter: CounterUs<TIM2>,
     }
 
     #[init]
@@ -85,6 +92,7 @@ mod app {
 
         let local = Local {
             adc_internal: dipho.adc_internal,
+            adc_counter: dipho.adc_counter,
         };
 
         let shared = Shared {
@@ -96,6 +104,15 @@ mod app {
         };
 
         (shared, local, init::Monotonics(mono))
+    }
+
+    #[task(binds = TIM2, shared=[device_settings, serial_data])]
+    fn read_adc(cx: read_adc::Context) {
+        let data = "radc";
+        let mut serial_data = cx.shared.serial_data;
+        (&mut serial_data).lock(|serial_data| {
+            serial_data.write(data.as_bytes()).ok();
+        });
     }
 
     #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial_config, serial_data])]
@@ -124,11 +141,6 @@ mod app {
         );
     }
 
-    // #[idle()]
-    // fn idle(mut cx: idle::Context) -> ! {
-    //     loop {
-    //     }
-    // }
 
     #[task(priority = 1, local=[cnt: u32 = 0], shared=[device_settings, serial_data])]
     fn data_task(mut cx: data_task::Context, instant: <Mono as rtic::Monotonic>::Instant) {
@@ -136,7 +148,7 @@ mod app {
             .shared
             .device_settings
             .lock(|device_settings| device_settings.data_interval);
-        let next_instant = instant + (data_interval as u64).millis();
+        let next_instant = instant + data_interval;
         data_task::spawn_at(next_instant, next_instant).unwrap();
         //data_task::spawn_after((data_interval as u64).millis()).unwrap();
 

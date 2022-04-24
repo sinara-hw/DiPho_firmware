@@ -8,6 +8,8 @@ use super::hal::{
     stm32::ADC1,
 };
 
+use systick_monotonic::{*, fugit::Hertz};
+
 pub enum AdcChannel {
     AfeOutput,
     CalOutput,
@@ -42,7 +44,7 @@ impl AdcInternal {
 
     pub fn read_afe_output_voltage(&mut self) -> f32 {
         let p = &mut self.pins.afe_output;
-        let code: u32 = self.adc1.read(p).unwrap();
+        let code: u16 = self.adc1.read(p).unwrap();
 
         //TODO: processing here
         code as f32
@@ -50,7 +52,7 @@ impl AdcInternal {
 
     pub fn read_cal_resistance(&mut self) -> f32 {
         let p = &mut self.pins.afe_output;
-        let code: u32 = self.adc1.read(p).unwrap();
+        let code: u16 = self.adc1.read(p).unwrap();
 
         //TODO: processing here
         code as f32
@@ -58,27 +60,31 @@ impl AdcInternal {
 
     pub fn read_bias_output_voltage(&mut self) -> f32 {
         let p = &mut self.pins.afe_output;
-        let code: u32 = self.adc1.read(p).unwrap();
+        let code: u16 = self.adc1.read(p).unwrap();
 
         //TODO: processing here
         code as f32
     }
 
-    pub fn read_afe_raw(&mut self) -> u32 {
+    pub fn read_afe_raw(&mut self) -> u16 {
         let p = &mut self.pins.afe_output;
-        let readout: u32 = self.adc1.read(p).unwrap();
+        let readout: u16 = self.adc1.read(p).unwrap();
         readout
     }
 
-    pub fn read_cal_raw(&mut self) -> u32 {
+    pub fn read_cal_raw(&mut self) -> u16 {
         let p = &mut self.pins.afe_output;
-        let readout: u32 = self.adc1.read(p).unwrap();
+        let readout: u16 = self.adc1.read(p).unwrap();
         readout
     }
 
-    pub fn read_bias_raw(&mut self) -> u32 {
+    pub fn read_bias_raw(&mut self) -> u16 {
         let p = &mut self.pins.afe_output;
-        let readout: u32 = self.adc1.read(p).unwrap();
+        let readout: u16 = self.adc1.read(p).unwrap();
         readout
+    }
+
+    pub fn read_vref(&mut self) -> u16 {
+        self.adc1.read_vref()
     }
 }
