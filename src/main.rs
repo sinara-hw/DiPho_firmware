@@ -22,7 +22,7 @@ use hardware::{
 };
 
 use arrform::*;
-use core::str as str;
+use core::str;
 use cortex_m::asm::delay;
 use rtic;
 use stm32f1xx_hal::adc::SampleTime;
@@ -116,8 +116,7 @@ mod app {
         let dtbs = arrform!(12, "{:.4} \r\n", data);
         (&mut serial_data).lock(|serial_data| {
             serial_data.write(dtbs.as_bytes()).ok();
-            },
-        );
+        });
     }
 
     #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial_config, serial_data, device_settings])]
@@ -127,11 +126,15 @@ mod app {
         let mut serial_data = cx.shared.serial_data;
         let mut device_settings = cx.shared.device_settings;
 
-        (&mut usb_dev, &mut serial_config, &mut serial_data, &mut device_settings).lock(
-            |usb_dev, serial_config, serial_data, device_settings| {
+        (
+            &mut usb_dev,
+            &mut serial_config,
+            &mut serial_data,
+            &mut device_settings,
+        )
+            .lock(|usb_dev, serial_config, serial_data, device_settings| {
                 super::usb_poll(usb_dev, serial_config, serial_data, device_settings);
-            },
-        );
+            });
     }
 
     #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial_config, serial_data, device_settings])]
@@ -141,11 +144,15 @@ mod app {
         let mut serial_data = cx.shared.serial_data;
         let mut device_settings = cx.shared.device_settings;
 
-        (&mut usb_dev, &mut serial_config, &mut serial_data, &mut device_settings).lock(
-            |usb_dev, serial_config, serial_data, device_settings| {
+        (
+            &mut usb_dev,
+            &mut serial_config,
+            &mut serial_data,
+            &mut device_settings,
+        )
+            .lock(|usb_dev, serial_config, serial_data, device_settings| {
                 super::usb_poll(usb_dev, serial_config, serial_data, device_settings);
-            },
-        );
+            });
     }
 
     // #[task(priority = 1, shared=[device_settings])]
@@ -162,13 +169,13 @@ fn usb_poll<B: usb_device::bus::UsbBus>(
     usb_dev: &mut usb_device::prelude::UsbDevice<'static, B>,
     serial_config: &mut usbd_serial::SerialPort<'static, B>,
     serial_data: &mut usbd_serial::SerialPort<'static, B>,
-    device_settings: &mut DeviceSettings
+    device_settings: &mut DeviceSettings,
 ) {
     if !usb_dev.poll(&mut [serial_config, serial_data]) {
         return;
     }
 
-    let mut buf:[u8; 64] = [32; 64];
+    let mut buf: [u8; 64] = [32; 64];
     //let buf: &mut [u8];
 
     match serial_config.read(&mut buf) {
@@ -177,59 +184,64 @@ fn usb_poll<B: usb_device::bus::UsbBus>(
             let mut cfg_str = str::from_utf8(&buf).unwrap();
             let mut cfg_str_split = cfg_str.split_ascii_whitespace();
 
-            let af : ArrForm<64>;
+            let af: ArrForm<64>;
             let response: &str;
             match cfg_str_split.next().unwrap_or_else(|| "") {
                 "help" => response = "<help text>\r\n",
-                "get" =>  {
+                "get" => {
                     match cfg_str_split.next().unwrap_or_else(|| "") {
                         "afe_type" => response = "<afe type>\r\n",
                         "gain" => {
                             af = arrform!(64, "gain setting: {:?} \r\n", device_settings.gain);
                             response = af.as_str();
-                            },
+                        }
                         "sampling_time" => {
-                            af = arrform!(64, "gain setting: {:?} \r\n", device_settings.sampling_time);
+                            af = arrform!(
+                                64,
+                                "gain setting: {:?} \r\n",
+                                device_settings.sampling_time
+                            );
                             response = af.as_str();
-                            },
+                        }
                         "sampling_freq" => {
-                            af = arrform!(64, "gain setting: {:?} \r\n", device_settings.sampling_freq);
+                            af = arrform!(
+                                64,
+                                "gain setting: {:?} \r\n",
+                                device_settings.sampling_freq
+                            );
                             response = af.as_str();
-                            },
+                        }
                         _ => response = "get command error: unknown field!\r\n",
                     };
-                },
+                }
                 "set" => {
                     match cfg_str_split.next().unwrap_or_else(|| "") {
                         "afe_type" => response = "<afe type\r\n",
-                        "gain" => {
-                            match cfg_str_split.next().unwrap_or_else(|| "") {
-                                "Low" | "low" | "LOW" | "lo" | "LO" => {
-                                    response = "set gain: \"Low\" ok!\r\n";
-                                    device_settings.gain = GainSetting::Low;
-                                    },
-                                "Medium" | "medium" | "MEDIUM" | "Med" | "med" | "MED" => {
-                                    response = "set gain: \"Medium\" ok!\r\n";
-                                    device_settings.gain = GainSetting::Medium;
-                                    },
-                                "High" | "high" | "HIGH" | "hi" | "HI" => {
-                                    response = "set gain: \"High\" ok!\r\n";
-                                    device_settings.gain = GainSetting::High;
-                                    },
-                                "Max" | "max" | "MAX" => {
-                                    response = "set gain: \"Max\" ok!\r\n";
-                                    device_settings.gain = GainSetting::Max;
-                                    },
-                                _ => response = "set gain error: invalid value!\r\n",
+                        "gain" => match cfg_str_split.next().unwrap_or_else(|| "") {
+                            "Low" | "low" | "LOW" | "lo" | "LO" => {
+                                response = "set gain: \"Low\" ok!\r\n";
+                                device_settings.gain = GainSetting::Low;
                             }
-                            },
+                            "Medium" | "medium" | "MEDIUM" | "Med" | "med" | "MED" => {
+                                response = "set gain: \"Medium\" ok!\r\n";
+                                device_settings.gain = GainSetting::Medium;
+                            }
+                            "High" | "high" | "HIGH" | "hi" | "HI" => {
+                                response = "set gain: \"High\" ok!\r\n";
+                                device_settings.gain = GainSetting::High;
+                            }
+                            "Max" | "max" | "MAX" => {
+                                response = "set gain: \"Max\" ok!\r\n";
+                                device_settings.gain = GainSetting::Max;
+                            }
+                            _ => response = "set gain error: invalid value!\r\n",
+                        },
                         "sampling_time" => response = "<sampling time setting>\r\n",
                         "sampling_freq" => response = "<sampling frequency setting>\r\n",
                         _ => response = "set command error: unknown field!\r\n",
                     };
-                },
+                }
                 _ => response = "unknown command",
-
             }
 
             serial_config.write(response.as_bytes()).ok();
