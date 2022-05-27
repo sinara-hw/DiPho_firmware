@@ -70,6 +70,8 @@ mod app {
 
     #[shared]
     struct Shared {
+        adc_internal: AdcInternal,
+        adc_counter: CounterUs<TIM2>,
         device_settings: DeviceSettings,
         gpio: Gpio,
         usb_dev: UsbDevice<'static, UsbBusType>,
@@ -79,8 +81,7 @@ mod app {
 
     #[local]
     struct Local {
-        adc_internal: AdcInternal,
-        adc_counter: CounterUs<TIM2>,
+        
     }
 
     #[init]
@@ -90,15 +91,14 @@ mod app {
         //let clock = SystemTimer::;
 
         let dipho = hardware::setup::setup(cx.device);
-
-        //data_task::spawn(mono.now()).unwrap();
+        //update_settings_task::spawn(mono.now()).unwrap();
 
         let local = Local {
+            
+        };
+        let shared = Shared {
             adc_internal: dipho.adc_internal,
             adc_counter: dipho.adc_counter,
-        };
-
-        let shared = Shared {
             device_settings: DeviceSettings::default(),
             gpio: dipho.gpio,
             usb_dev: dipho.usb_dev,
@@ -109,60 +109,72 @@ mod app {
         (shared, local, init::Monotonics(mono))
     }
 
-    #[task(binds = TIM2, local=[adc_internal], shared=[serial_data])]
+    #[task(binds = TIM2, shared=[adc_internal, serial_data])]
     fn transmit_adc_data(cx: transmit_adc_data::Context) {
-        let mut data = cx.local.adc_internal.read_afe_output_voltage();
+        let mut adc_internal = cx.shared.adc_internal;
         let mut serial_data = cx.shared.serial_data;
-        let dtbs = arrform!(12, "{:.4} \r\n", data);
-        (&mut serial_data).lock(|serial_data| {
+        (&mut adc_internal, &mut serial_data).lock(|adc_internal, serial_data| {
+            let mut data = adc_internal.read_afe_output_voltage();
+            let dtbs = arrform!(12, "{:.6} mA\r\n", data);
             serial_data.write(dtbs.as_bytes()).ok();
         });
     }
 
-    #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial_config, serial_data, device_settings])]
+    #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial_config, serial_data, device_settings, adc_counter])]
     fn usb_tx(cx: usb_tx::Context) {
         let mut usb_dev = cx.shared.usb_dev;
         let mut serial_config = cx.shared.serial_config;
         let mut serial_data = cx.shared.serial_data;
         let mut device_settings = cx.shared.device_settings;
+        let mut adc_counter = cx.shared.adc_counter;
 
         (
             &mut usb_dev,
             &mut serial_config,
             &mut serial_data,
             &mut device_settings,
+            &mut adc_counter
         )
-            .lock(|usb_dev, serial_config, serial_data, device_settings| {
-                super::usb_poll(usb_dev, serial_config, serial_data, device_settings);
+            .lock(|usb_dev, serial_config, serial_data, device_settings, adc_counter| {
+                super::usb_poll(usb_dev, serial_config, serial_data, device_settings, adc_counter);
             });
     }
 
-    #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial_config, serial_data, device_settings])]
+    #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial_config, serial_data, device_settings, adc_counter])]
     fn usb_rx0(cx: usb_rx0::Context) {
         let mut usb_dev = cx.shared.usb_dev;
         let mut serial_config = cx.shared.serial_config;
         let mut serial_data = cx.shared.serial_data;
         let mut device_settings = cx.shared.device_settings;
+        let mut adc_counter = cx.shared.adc_counter;
 
         (
             &mut usb_dev,
             &mut serial_config,
             &mut serial_data,
             &mut device_settings,
+            &mut adc_counter
         )
-            .lock(|usb_dev, serial_config, serial_data, device_settings| {
-                super::usb_poll(usb_dev, serial_config, serial_data, device_settings);
+            .lock(|usb_dev, serial_config, serial_data, device_settings, adc_counter| {
+                super::usb_poll(usb_dev, serial_config, serial_data, device_settings, adc_counter);
             });
     }
 
-    // #[task(priority = 1, shared=[device_settings])]
-    // fn update_settings_task(mut cx: data_task::Context, instant: <Mono as rtic::Monotonic>::Instant) {
-    //     &mut device_settings.lock(device_settings){
-    //         let i = 0
-    //     }
-    //     let next_instant = instant + (50 as u64).millis();
-    //     data_task::spawn_at(next_instant, next_instant).unwrap();
-    // }
+    #[task(priority = 1, shared=[gpio, adc_internal, device_settings])]
+    fn update_settings_task(mut cx: update_settings_task::Context, instant: <Mono as rtic::Monotonic>::Instant) {
+        let mut gpio = cx.shared.gpio;
+        let mut adc_internal = cx.shared.adc_internal;
+        let mut device_settings = cx.shared.device_settings;
+        
+        (&mut gpio, &mut adc_internal, &mut device_settings).lock(|gpio, adc_internal, device_settings|{
+            gpio.set_gain(device_settings.gain);
+            adc_internal.set_gain(device_settings.gain);
+            adc_internal.set_sample_time(device_settings.sampling_time);
+
+        });
+        let next_instant = instant + (100 as u64).millis();
+        update_settings_task::spawn_at(next_instant, next_instant).unwrap();
+    }
 }
 
 fn usb_poll<B: usb_device::bus::UsbBus>(
@@ -170,6 +182,7 @@ fn usb_poll<B: usb_device::bus::UsbBus>(
     serial_config: &mut usbd_serial::SerialPort<'static, B>,
     serial_data: &mut usbd_serial::SerialPort<'static, B>,
     device_settings: &mut DeviceSettings,
+    adc_counter: &mut CounterUs<TIM2>,
 ) {
     if !usb_dev.poll(&mut [serial_config, serial_data]) {
         return;
@@ -209,6 +222,7 @@ fn usb_poll<B: usb_device::bus::UsbBus>(
                                 "gain setting: {:?} \r\n",
                                 device_settings.sampling_freq
                             );
+                            //adc_counter.start(device_settings.sampling_freq.into_duration()).unwrap();
                             response = af.as_str();
                         }
                         _ => response = "get command error: unknown field!\r\n",

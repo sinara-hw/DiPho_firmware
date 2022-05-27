@@ -1,10 +1,33 @@
-//use num_enum::TryFromPrimitive;
-
 use super::hal::gpio::{gpioa::*, gpiob::*, Floating, Input, Output, PinState, PushPull};
 use defmt::Format;
 //use embedded_hal as hal;
 //use hal::digital::v2::{InputPin, OutputPin, PinState};
 
+#[derive(Copy, Clone, Debug, Format)]
+pub enum AfeType {
+    /// Default (transimpedance) amplifier is main part of analog front-end fitted on daughterboard
+    Transimpedance,
+    /// Alternative (logarithmic) amplifier is main part of analog front-end fitted on daughterboard
+    Logarithmic,
+}
+
+#[derive(Copy, Clone, Debug, Format)]
+pub enum GainSetting {
+    /// Low gain (around 200/300) was selected in config (all gain settings are applicable only for TIA configuration)
+    Low,
+    /// Medium gain (around 3100/3300)
+    Medium,
+    /// High gain (around 32.4k/32.5k)
+    High,
+    /// Maximum gain (around 324k)
+    Max,
+}
+
+impl Default for GainSetting {
+    fn default() -> Self {
+        Self::Low
+    }
+}
 #[allow(clippy::type_complexity)]
 pub struct GpioPins {
     pub led: PA8<Output<PushPull>>,
@@ -33,32 +56,6 @@ impl From<State> for PinState {
             State::Assert => PinState::High,
             State::Deassert => PinState::Low,
         }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Format)]
-pub enum AfeType {
-    /// Default (transimpedance) amplifier is main part of analog front-end fitted on daughterboard
-    Transimpedance,
-    /// Alternative (logarithmic) amplifier is main part of analog front-end fitted on daughterboard
-    Logarithmic,
-}
-
-#[derive(Copy, Clone, Debug, Format)]
-pub enum GainSetting {
-    /// Low gain (around 200/300) was selected in config (all gain settings are applicable only for TIA configuration)
-    Low,
-    /// Medium gain (around 3100/3300)
-    Medium,
-    /// High gain (around 32.4k/32.5k)
-    High,
-    /// Maximum gain (around 324k)
-    Max,
-}
-
-impl Default for GainSetting {
-    fn default() -> Self {
-        Self::Low
     }
 }
 

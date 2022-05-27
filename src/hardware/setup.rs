@@ -4,6 +4,7 @@
 use super::hal::{
     self as hal,
     gpio::GpioExt,
+    adc::SampleTime,
     pac::{interrupt, Interrupt, TIM2},
     prelude::*,
     timer::{Counter, CounterUs, Event, Timer},
@@ -11,8 +12,8 @@ use super::hal::{
 };
 
 use super::{
-    adc_internal::{AdcInternal, AdcInternalPins},
-    gpio::{Gpio, GpioPins},
+    adc_internal::{AdcInternal, AdcInternalPins, AdcInternalSettings},
+    gpio::{Gpio, GpioPins, GainSetting},
 };
 
 //use stm32f1xx_hal::afio::MAPR as afio;
@@ -114,7 +115,13 @@ pub fn setup(device: stm32f1xx_hal::stm32::Peripherals) -> DiPhoDevices {
         bias_output: gpioa.pa2.into_analog(&mut gpioa.crl),
     };
 
-    let mut adc_internal = AdcInternal::new(&ccdr, device.ADC1, adc_internal_pins);
+    let adc_internal_settings = AdcInternalSettings {
+        sampling_time: SampleTime::T_239,
+        gain: GainSetting::Low,
+        switch_resistance: 0.0,
+    };
+
+    let mut adc_internal = AdcInternal::new(&ccdr, device.ADC1, adc_internal_pins, adc_internal_settings);
 
     info!("AFE: {}", adc_internal.read_afe_raw());
     info!("CAL: {}", adc_internal.read_cal_raw());
