@@ -75,12 +75,13 @@ mod app {
         usb_dev: UsbDevice<'static, UsbBusType>,
         serial_config: usbd_serial::SerialPort<'static, UsbBusType>,
         serial_data: usbd_serial::SerialPort<'static, UsbBusType>,
+        adc_internal: AdcInternal,
+        adc_counter: CounterUs<TIM2>,
     }
 
     #[local]
     struct Local {
-        adc_internal: AdcInternal,
-        adc_counter: CounterUs<TIM2>,
+
     }
 
     #[init]
@@ -94,8 +95,7 @@ mod app {
         //data_task::spawn(mono.now()).unwrap();
 
         let local = Local {
-            adc_internal: dipho.adc_internal,
-            adc_counter: dipho.adc_counter,
+
         };
 
         let shared = Shared {
@@ -104,17 +104,29 @@ mod app {
             usb_dev: dipho.usb_dev,
             serial_config: dipho.serial_config,
             serial_data: dipho.serial_data,
+            adc_internal: dipho.adc_internal,
+            adc_counter: dipho.adc_counter,
         };
 
         (shared, local, init::Monotonics(mono))
     }
 
-    #[task(binds = TIM2, local=[adc_internal], shared=[serial_data])]
+    #[task(binds = TIM2, shared=[adc_internal, serial_data])]
     fn transmit_adc_data(cx: transmit_adc_data::Context) {
-        let mut data = cx.local.adc_internal.read_afe_output_voltage();
+        let mut adc_internal = cx.shared.adc_internal;
         let mut serial_data = cx.shared.serial_data;
-        let dtbs = arrform!(12, "{:.4} \r\n", data);
+        let mut data: f32 = 0.00;
+        (&mut adc_internal).lock(|adc_internal| {
+            //let mut data = adc_internal.read_afe_output_voltage();
+            //let dtbs = arrform!(12, "{:.6} mA\r\n", data);
+             data = adc_internal.read_afe_output_voltage();
+        });
+
+        let dtbs = arrform!(16, "{:.10} \r\n", data);
+
         (&mut serial_data).lock(|serial_data| {
+            //let mut data = adc_internal.read_afe_output_voltage();
+            //let dtbs = arrform!(12, "{:.6} mA\r\n", data);
             serial_data.write(dtbs.as_bytes()).ok();
         });
     }
