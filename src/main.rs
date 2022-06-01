@@ -120,7 +120,7 @@ mod app {
             data = adc_internal.read_afe_output_voltage();
         });
 
-        let dtbs = arrform!(32, "{:.6} mA \r\n", data);
+        let dtbs = arrform!(32, "{:.6}\r\n", data);
 
         (&mut serial_data).lock(|serial_data| {
             serial_data.write(dtbs.as_bytes()).ok();
