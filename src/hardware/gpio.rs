@@ -3,7 +3,7 @@ use defmt::Format;
 //use embedded_hal as hal;
 //use hal::digital::v2::{InputPin, OutputPin, PinState};
 
-#[derive(Copy, Clone, Debug, Format)]
+#[derive(PartialEq, Copy, Clone, Debug, Format)]
 pub enum AfeType {
     /// Default (transimpedance) amplifier is main part of analog front-end fitted on daughterboard
     Transimpedance,
@@ -11,7 +11,7 @@ pub enum AfeType {
     Logarithmic,
 }
 
-#[derive(Copy, Clone, Debug, Format)]
+#[derive(PartialEq, Copy, Clone, Debug, Format)]
 pub enum GainSetting {
     /// Low gain (around 200/300) was selected in config (all gain settings are applicable only for TIA configuration)
     Low,
@@ -78,12 +78,12 @@ impl Gpio {
                 self.pins.gain_sel.1.set_state(PinState::High);
             }
             GainSetting::Medium => {
-                self.pins.gain_sel.0.set_state(PinState::High);
-                self.pins.gain_sel.1.set_state(PinState::Low);
-            }
-            GainSetting::High => {
                 self.pins.gain_sel.0.set_state(PinState::Low);
                 self.pins.gain_sel.1.set_state(PinState::High);
+            }
+            GainSetting::High => {
+                self.pins.gain_sel.0.set_state(PinState::High);
+                self.pins.gain_sel.1.set_state(PinState::Low);
             }
             GainSetting::Max => {
                 self.pins.gain_sel.0.set_state(PinState::Low);

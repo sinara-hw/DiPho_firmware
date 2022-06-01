@@ -10,7 +10,9 @@ pub mod hardware;
 //use core::time::Duration;
 
 use defmt::{info, Format};
-use defmt_rtt as _; // global logger
+use defmt_rtt as _;
+use hal::pac::sdio::resp;
+// global logger
 use panic_probe as _; // gloibal panic handler
                       //use defmt_semihosting as _; // global logger
                       //use panic_probe as _; // gloibal panic handler
@@ -26,11 +28,11 @@ use core::str;
 use cortex_m::asm::delay;
 use rtic;
 use stm32f1xx_hal::adc::SampleTime;
-use stm32f1xx_hal::pac::TIM2;
+use stm32f1xx_hal::pac::TIM3;
 use stm32f1xx_hal::prelude::*;
 use stm32f1xx_hal::timer::{Counter, CounterUs, Event, Timer};
 use stm32f1xx_hal::usb::{Peripheral, UsbBus, UsbBusType};
-use systick_monotonic::{fugit::Hertz, *};
+use systick_monotonic::{fugit::Hertz, fugit::Rate, *};
 use usb_device::prelude::*;
 
 #[derive(Clone, Copy, Debug)]
@@ -71,7 +73,7 @@ mod app {
     #[shared]
     struct Shared {
         adc_internal: AdcInternal,
-        adc_counter: CounterUs<TIM2>,
+        adc_counter: CounterUs<TIM3>,
         device_settings: DeviceSettings,
         gpio: Gpio,
         usb_dev: UsbDevice<'static, UsbBusType>,
@@ -80,9 +82,7 @@ mod app {
     }
 
     #[local]
-    struct Local {
-        
-    }
+    struct Local {}
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
@@ -91,11 +91,9 @@ mod app {
         //let clock = SystemTimer::;
 
         let dipho = hardware::setup::setup(cx.device);
-        //update_settings_task::spawn(mono.now()).unwrap();
+        update_settings_task::spawn(mono.now()).unwrap();
 
-        let local = Local {
-            
-        };
+        let local = Local {};
         let shared = Shared {
             adc_internal: dipho.adc_internal,
             adc_counter: dipho.adc_counter,
@@ -109,13 +107,22 @@ mod app {
         (shared, local, init::Monotonics(mono))
     }
 
-    #[task(binds = TIM2, shared=[adc_internal, serial_data])]
+    #[task(binds = TIM3, shared=[adc_internal, adc_counter, serial_data])]
     fn transmit_adc_data(cx: transmit_adc_data::Context) {
         let mut adc_internal = cx.shared.adc_internal;
+        let mut adc_counter = cx.shared.adc_counter;
         let mut serial_data = cx.shared.serial_data;
-        (&mut adc_internal, &mut serial_data).lock(|adc_internal, serial_data| {
-            let mut data = adc_internal.read_afe_output_voltage();
-            let dtbs = arrform!(12, "{:.6} mA\r\n", data);
+        let mut data: f32 = 0.00;
+        (&mut adc_counter).lock(|adc_counter| {
+            adc_counter.clear_interrupt(Event::Update);
+        });
+        (&mut adc_internal).lock(|adc_internal| {
+            data = adc_internal.read_afe_output_voltage();
+        });
+
+        let dtbs = arrform!(32, "{:.6} mA \r\n", data);
+
+        (&mut serial_data).lock(|serial_data| {
             serial_data.write(dtbs.as_bytes()).ok();
         });
     }
@@ -133,11 +140,19 @@ mod app {
             &mut serial_config,
             &mut serial_data,
             &mut device_settings,
-            &mut adc_counter
+            &mut adc_counter,
         )
-            .lock(|usb_dev, serial_config, serial_data, device_settings, adc_counter| {
-                super::usb_poll(usb_dev, serial_config, serial_data, device_settings, adc_counter);
-            });
+            .lock(
+                |usb_dev, serial_config, serial_data, device_settings, adc_counter| {
+                    super::usb_poll(
+                        usb_dev,
+                        serial_config,
+                        serial_data,
+                        device_settings,
+                        adc_counter,
+                    );
+                },
+            );
     }
 
     #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial_config, serial_data, device_settings, adc_counter])]
@@ -153,26 +168,38 @@ mod app {
             &mut serial_config,
             &mut serial_data,
             &mut device_settings,
-            &mut adc_counter
+            &mut adc_counter,
         )
-            .lock(|usb_dev, serial_config, serial_data, device_settings, adc_counter| {
-                super::usb_poll(usb_dev, serial_config, serial_data, device_settings, adc_counter);
-            });
+            .lock(
+                |usb_dev, serial_config, serial_data, device_settings, adc_counter| {
+                    super::usb_poll(
+                        usb_dev,
+                        serial_config,
+                        serial_data,
+                        device_settings,
+                        adc_counter,
+                    );
+                },
+            );
     }
 
     #[task(priority = 1, shared=[gpio, adc_internal, device_settings])]
-    fn update_settings_task(mut cx: update_settings_task::Context, instant: <Mono as rtic::Monotonic>::Instant) {
+    fn update_settings_task(
+        mut cx: update_settings_task::Context,
+        instant: <Mono as rtic::Monotonic>::Instant,
+    ) {
         let mut gpio = cx.shared.gpio;
         let mut adc_internal = cx.shared.adc_internal;
         let mut device_settings = cx.shared.device_settings;
-        
-        (&mut gpio, &mut adc_internal, &mut device_settings).lock(|gpio, adc_internal, device_settings|{
-            gpio.set_gain(device_settings.gain);
-            adc_internal.set_gain(device_settings.gain);
-            adc_internal.set_sample_time(device_settings.sampling_time);
 
-        });
-        let next_instant = instant + (100 as u64).millis();
+        (&mut gpio, &mut adc_internal, &mut device_settings).lock(
+            |gpio, adc_internal, device_settings| {
+                gpio.set_gain(device_settings.gain);
+                adc_internal.set_gain(device_settings.gain);
+                adc_internal.set_sample_time(device_settings.sampling_time);
+            },
+        );
+        let next_instant = instant + (500 as u64).millis();
         update_settings_task::spawn_at(next_instant, next_instant).unwrap();
     }
 }
@@ -182,7 +209,7 @@ fn usb_poll<B: usb_device::bus::UsbBus>(
     serial_config: &mut usbd_serial::SerialPort<'static, B>,
     serial_data: &mut usbd_serial::SerialPort<'static, B>,
     device_settings: &mut DeviceSettings,
-    adc_counter: &mut CounterUs<TIM2>,
+    adc_counter: &mut CounterUs<TIM3>,
 ) {
     if !usb_dev.poll(&mut [serial_config, serial_data]) {
         return;
@@ -222,7 +249,9 @@ fn usb_poll<B: usb_device::bus::UsbBus>(
                                 "gain setting: {:?} \r\n",
                                 device_settings.sampling_freq
                             );
-                            //adc_counter.start(device_settings.sampling_freq.into_duration()).unwrap();
+                            adc_counter
+                                .start(device_settings.sampling_freq.into_duration())
+                                .unwrap();
                             response = af.as_str();
                         }
                         _ => response = "get command error: unknown field!\r\n",
@@ -250,8 +279,66 @@ fn usb_poll<B: usb_device::bus::UsbBus>(
                             }
                             _ => response = "set gain error: invalid value!\r\n",
                         },
-                        "sampling_time" => response = "<sampling time setting>\r\n",
-                        "sampling_freq" => response = "<sampling frequency setting>\r\n",
+                        "sampling_time" => match cfg_str_split.next().unwrap_or_else(|| "") {
+                            "1" => {
+                                response = "set sampling time: 1.5 cycles ok!";
+                                device_settings.sampling_time = SampleTime::T_1;
+                            }
+                            "7" => {
+                                response = "set sampling time: 7.5 cycles ok!";
+                                device_settings.sampling_time = SampleTime::T_7;
+                            }
+                            "13" => {
+                                response = "set sampling time: 13.5 cycles ok!";
+                                device_settings.sampling_time = SampleTime::T_13;
+                            }
+                            "28" => {
+                                response = "set sampling time: 28.5 cycles ok!";
+                                device_settings.sampling_time = SampleTime::T_28;
+                            }
+                            "41" => {
+                                response = "set sampling time: 41.5 cycles ok!";
+                                device_settings.sampling_time = SampleTime::T_41;
+                            }
+                            "55" => {
+                                response = "set sampling time: 55.5 cycles ok!";
+                                device_settings.sampling_time = SampleTime::T_55;
+                            }
+                            "71" => {
+                                response = "set sampling time: 71.5 cycles ok!";
+                                device_settings.sampling_time = SampleTime::T_71;
+                            }
+                            "239" => {
+                                response = "set sampling time: 239.5 cycles ok!";
+                                device_settings.sampling_time = SampleTime::T_239;
+                            }
+
+                            _ => response = "set sampling time error: invalid value!\r\n",
+                        },
+                        "sampling_freq" => {
+                            let freq = cfg_str_split
+                                .next()
+                                .unwrap_or_else(|| "")
+                                .parse::<u32>()
+                                .unwrap_or_else(|_| 0 as u32);
+                            if freq <= 15 {
+                                response = "set sampling frequency error: sampling frequency must be higher than 15Hz!\r\n";
+                            } else if freq > 50_000 {
+                                response = "set sampling frequency error: sampling frequency must not be higher than 50kHz!\r\n";
+                            } else {
+                                let rate: Rate<u32, 1, 1> = freq.Hz();
+                                device_settings.sampling_freq = rate;
+                                af = arrform!(
+                                    64,
+                                    "set sampling frequency: {:?} ok!\r\n",
+                                    device_settings.sampling_freq
+                                );
+                                response = af.as_str();
+                                adc_counter
+                                    .start(device_settings.sampling_freq.into_duration())
+                                    .unwrap();
+                            }
+                        }
                         _ => response = "set command error: unknown field!\r\n",
                     };
                 }
