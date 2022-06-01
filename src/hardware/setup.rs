@@ -135,7 +135,7 @@ pub fn setup(device: stm32f1xx_hal::stm32::Peripherals) -> DiPhoDevices {
         adc_internal.calibrate_tia();
     }
 
-    let freq: Rate<u32, 1, 1> = 20.Hz();
+    let freq: Rate<u32, 1, 1> = 1000.Hz();
 
     info!("Setup default ADC sampling frequency {}", freq);
 
