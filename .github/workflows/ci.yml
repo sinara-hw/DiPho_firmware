@@ -18,7 +18,7 @@ jobs:
           toolchain: nightly
           target: thumbv7m-none-eabi
           override: true
-      - uses: rustup component add rustfmt --toolchain nightly-x86_64-unknown-linux-gnu
+      - name: rustup component add rustfmt --toolchain nightly-x86_64-unknown-linux-gnu
       - name: cargo fmt --check
         uses: actions-rs/cargo@v1
         with:
