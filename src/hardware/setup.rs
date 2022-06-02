@@ -1,18 +1,21 @@
 //use stm32f1xx_hal::hal::digital::v2::OutputPin;
 //use stm32f1xx_hal::
 
+use crate::hardware::gpio::AfeType;
+
 use super::hal::{
     self as hal,
+    adc::SampleTime,
     gpio::GpioExt,
-    pac::{interrupt, Interrupt, TIM2},
+    pac::{interrupt, Interrupt, TIM3},
     prelude::*,
     timer::{Counter, CounterUs, Event, Timer},
     usb::{Peripheral, UsbBus, UsbBusType},
 };
 
 use super::{
-    adc_internal::{AdcInternal, AdcInternalPins},
-    gpio::{Gpio, GpioPins},
+    adc_internal::{AdcInternal, AdcInternalPins, AdcInternalSettings},
+    gpio::{GainSetting, Gpio, GpioPins},
 };
 
 //use stm32f1xx_hal::afio::MAPR as afio;
@@ -26,7 +29,7 @@ use defmt::info;
 pub struct DiPhoDevices {
     pub gpio: Gpio,
     pub adc_internal: AdcInternal,
-    pub adc_counter: CounterUs<TIM2>,
+    pub adc_counter: CounterUs<TIM3>,
     pub usb_dev: UsbDevice<'static, UsbBusType>,
     pub serial_config: usbd_serial::SerialPort<'static, UsbBusType>,
     pub serial_data: usbd_serial::SerialPort<'static, UsbBusType>,
@@ -114,23 +117,35 @@ pub fn setup(device: stm32f1xx_hal::stm32::Peripherals) -> DiPhoDevices {
         bias_output: gpioa.pa2.into_analog(&mut gpioa.crl),
     };
 
-    let mut adc_internal = AdcInternal::new(&ccdr, device.ADC1, adc_internal_pins);
+    let adc_internal_settings = AdcInternalSettings {
+        sampling_time: SampleTime::T_239,
+        gain: GainSetting::Low,
+        switch_resistance: 0.0,
+    };
 
+    let mut adc_internal =
+        AdcInternal::new(&ccdr, device.ADC1, adc_internal_pins, adc_internal_settings);
+
+    info!("Attached AFE is {}", gpio.get_afe_type());
     info!("AFE: {}", adc_internal.read_afe_raw());
     info!("CAL: {}", adc_internal.read_cal_raw());
     info!("BIAS: {}", adc_internal.read_bias_raw());
 
-    let freq: Rate<u32, 1, 1> = 10.kHz();
+    if gpio.get_afe_type() == AfeType::Transimpedance {
+        adc_internal.calibrate_tia();
+    }
+
+    let freq: Rate<u32, 1, 1> = 1000.Hz();
 
     info!("Setup default ADC sampling frequency {}", freq);
 
-    let mut adc_counter = device.TIM2.counter_us(&ccdr);
+    let mut adc_counter = device.TIM3.counter_us(&ccdr);
     adc_counter.start(freq.into_duration()).unwrap();
 
     adc_counter.listen(Event::Update);
 
     unsafe {
-        cortex_m::peripheral::NVIC::unmask(Interrupt::TIM2);
+        cortex_m::peripheral::NVIC::unmask(Interrupt::TIM3);
     }
 
     info!("--- Hardware setup done! ---");
